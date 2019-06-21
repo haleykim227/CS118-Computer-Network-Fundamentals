@@ -1,0 +1,172 @@
+Week 1
+Socket Programming
+
+What is the model for network programming?
+-client-Server Model
+-client: requests data, initiates communication and waits for response
+-server (Daemon): responds to data requests, waits for client connection, processes requests and sends replies
+	-server's service model
+		1. concurrent: processes multiple clients' requests simultaneously
+		2. sequential: processes one client's requests at a time
+		3. hybrid: both
+-a client can be a server of another client, a server can be the client of another server
+
+Where are we programming?
+-which layer are we at?
+	-clients and servers are programs at the application layer
+	-transport layer responsible for providing communication services for the app layer
+	-trasport layer protocols: 
+		1. TCP - Transmission Control Protocol
+			-guarantees delivery of all data
+			-no duplicate data transmitted
+			-order of data transfer is preserved
+			-data transmission possible in two directions simultaneously (full- duplex byte stream)
+		2. UDP - User Data Protocol
+			-unit of data transfer: datagram
+			-no guarantee of delivery
+			-no guarantee of order
+			-no flow control
+
+Which API's can we use? How do we use them?
+-socket programming API's
+-socket: a tuple of <ip_address:port>
+-basic steps of TCP socket
+	A. Client Side
+		1. socket()
+		2. connect(): this is the part that connects to the "accept()"
+		3. write(): a data request
+		4. read(): read the reply
+		5. close()
+	B. Server Side
+		1. socket()
+		2. bind()
+		3. listen()
+		4. accept(): a loop that blocks, until connection from client is established
+		5a. read(): read the data request
+		5b. process the request
+		6. write(): send the reply back to the client
+		7. read(): read the close signal
+		8. close()
+-an in-depth look at the socket syscalls
+	A. sockets
+		int socket(int domain, int type, int protocol);
+		-returns the file descriptor, or -1 on error
+		-domain: protocol family 
+			-IPv4: PF_INET
+			-IPv6: PF_INET6
+			-Unix socket: PF_UNIX, PF_LOCAL
+			-routing: PF_ROUTE
+		-type: communication type
+			-TCP: SOCK_STREAM (PF_INET)
+			-UDP: SOCK_DGRAM (PF_INET)
+		-protocol: protocol within family, in this case, use 0
+	B. Essential Structs
+		-sockaddr: contains socket address info
+			struct sockaddr 
+			{
+				unsigned short sa_family;		//addr family, AF_xxx - INET
+				char sa_data[14];				//14 bytes of proto addr
+			}	
+		-sockaddr_in: same as sockaddr but in a different format
+			struct sockaddr_in
+			{
+				short sin_family;				//addr family
+				unsigned short sin_port;		//port number
+				struct in_addr sin_addr;		//IP address
+				unsigned char sin_zero[8];		//zeros used to make it the same size as sockaddr
+			}
+
+			struct in_addr
+			{
+				uint32_t sin_port;				//32 bit IPv4 address
+			}
+	C. bind
+		int bind(int sockfd, struct sockaddr* myaddr, int addrlen);		//note: use sockaddr_in and cast it to sockaddr
+		-binds a socket toa local IP address and port number
+		-returns 0 on success, -1 on error
+		-int sockfd: int returned by socket()
+		-struct sockaddr* myaddr: struct that contains IP address, port number
+	D. listen
+		int listen(int sockfd, int backlog);
+		-put socket into listening state
+		-returns 0 on success, -1 on failure
+		-int backlog: max number of connections this program can serve simultaneously
+	E. accept
+		int accept(int sockfd, struct sockaddr* client_addr, int* addrlen);
+		-accepts a new connection
+		-returns client's socket file descriptor on success, -1 on failure
+			-also sets the appropriate errno
+		-struct sockaddr* client_addr: IP address and port number of clients 								//note: these are result
+		-addrlen: length of address structure = pointer to int that is the sizeof(struct sockaddr_in)		//arguments, meaning they will 
+																											//be set by the function
+	F. connect
+		int connect(int sockfd, struct sockaddr* server_addr, int addrlen);
+		-connects to another socket
+		-returns 0 on success, -1 on failure
+		-struct sockaddr* server_addr: contains the IP address and port number of the server
+		-int addrlen: sizeof(struct sockaddr_in)
+-dealing with byte ordering
+	-sending data
+		-long: htonl(int)
+		-short: htons(int)
+	-receiving data
+		-long: ntohl(int)
+		-short: ntohs(int)
+-address util functions
+	struct hostent* gethostbyname(const char* hostname);
+		-translate host name to IP address
+	struct hostent* gethostbyaddr(const char* addr, size_t len, int family);
+		-translate IP address to hostname
+	char* inet_ntoa(struct in_addr inaddr);
+		-translate IP address to ASCII dotted decimal notation (192.168.0.1)
+	int gethostname(char* name, size_namelen);
+		-read local host's name
+	in_addr_t inet_addr(const char* strptr); 		OR 			int inet_aton(const char* strptr, struct in_addr *inaddr);
+		-translate dotted decimal notation to IP address
+-server headers:
+	#include <stdio.h>
+	#include <stdlib.h>
+	#include <string.h>
+	#include <errno.h>
+	#include <sys/types.h>
+	#include <sys/socket.h>
+	#include <sys/wait.h>
+	#include <netinet/in.h>
+	#define MYPORT 5000			//avoid reserved ports
+	#define BACKLOG 10			//pending connections queue size
+
+-server sample code:
+	int main()
+	{
+		int sockfd;				//to listen to this fd
+		int newfd;				//new connection on this fd
+		struct sockaddr_in my_address;
+		struct sockaddr_in client_address;
+		int sin_size;
+
+		//create a socket
+		if((sockfd = socket(PF_INET, SOCK_STREAM, 0)) == -1)
+			...
+
+		//set address info
+		my_address.sin_family = AF_INET;
+		my_address.sin_port = htons(MYPORT);
+		my_address.sin_addr.s_addr = htonl(INADDR_ANY);		//allows clients to connect to any one of the host's IP address
+		memset(my.addr.sin_zero, '\0', sizeof(my_addr.sin_zero));
+
+		if(bind(sockfd, (struct sockaddr*) &my_addr, sizeof(struct sockaddr)) == -1)
+			...
+
+		if(listen(sockfd, BACKLOG) == -1)
+			...
+
+		while(1)
+		{
+			sin_size = sizeof(struct sockaddr_in);
+			if((new_fd = accept(sockfd, (struct sockaddr*) &their_addr, &sin_size) == -1)
+				...
+
+			printf("server got connection from %s\n", inet_ntoa(their_addr.sin_addr));
+			close(new_fd);
+		}
+	}
